@@ -1,0 +1,25 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dish details</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/css/style.css"></head><body>
+<header class="nav" id="nav"></header>
+<main class="wrap"><div id="pd"><div class="skel" style="height:380px"></div></div><h2 id="rh" hidden style="margin-top:40px">You may also like</h2><div class="grid" id="rel"></div></main>
+<script src="/js/app.js"></script><script>
+const id=new URLSearchParams(location.search).get('id');let p,qty=1,price=0;
+const stars=r=>'★'.repeat(Math.round(r))+'☆'.repeat(5-Math.round(r));
+function chg(d){qty=Math.max(1,Math.min(20,qty+d));$('#q').textContent=qty;$('#tot').textContent=money(price*qty)}
+function put(){const c=cart.get(),i=c.find(x=>x.id===p._id);i?i.qty+=qty:c.push({id:p._id,name:p.name,price:+price.toFixed(2),qty});cart.set(c)}
+async function init(){try{p=await api('/products/'+id)}catch{$('#pd').innerHTML='<p class="empty">We could not find this dish. <a href="/"><u>Back to the menu</u></a></p>';return}
+ document.title=p.name;price=p.price*(1-p.discount/100);const ok=p.isAvailable;
+ $('#pd').innerHTML=`<nav class="crumb"><a href="/">Menu</a> / <a href="/#menu">${p.category}</a> / ${p.name}</nav>
+ <div class="pd"><div class="pd-visual">${p.image?`<img src="${p.image}" alt="${p.name}">`:`<span>${ICON[p.category]||'🍽️'}</span>`}${p.discount?`<em class="disc">${p.discount}% off</em>`:''}</div>
+ <div class="pd-info"><span class="veg ${p.foodType==='Veg'?'':'nv'}"></span> ${p.foodType}
+ <h1>${p.name}</h1><div class="stars" aria-label="Rated ${p.rating} out of 5">${stars(p.rating)} <small>${p.rating}</small></div>
+ <p class="lead">${p.description||'Freshly prepared to order.'}</p>
+ <div class="pd-price">${money(price)} ${p.discount?`<s>${money(p.price)}</s>`:''}</div>
+ <div class="meta"><span>Category: <b>${p.category}</b></span><span>Type: <b>${p.foodType}</b></span><span>${ok?'<b class="ok">Available</b>':'<b class="no">Out of stock</b>'}</span></div>
+ ${ok?`<div class="buy"><div class="qty"><button onclick="chg(-1)" aria-label="Decrease">−</button><span id="q">1</span><button onclick="chg(1)" aria-label="Increase">+</button></div>
+ <button class="btn" onclick="put();toast('Added to cart')">Add to cart · <span id="tot">${money(price)}</span></button><button class="btn dark" onclick="put();location.href='/cart.html'">Buy now</button></div>`:'<button class="btn" disabled>Currently unavailable</button>'}
+ <p class="note">Cash on delivery. Delivery fee and tax are added at checkout.</p></div></div>`;
+ const r=(await api('/products?category='+encodeURIComponent(p.category))).filter(x=>x._id!==p._id).slice(0,4);
+ if(r.length){$('#rh').hidden=false;$('#rel').innerHTML=r.map(foodCard).join('')}}
+init();
+</script></body></html>

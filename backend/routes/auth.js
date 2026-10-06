@@ -1,0 +1,12 @@
+const r=require('express').Router(),bcrypt=require('bcryptjs'),jwt=require('jsonwebtoken'),{User}=require('../models'),{auth}=require('../middleware');
+const sign=u=>jwt.sign({id:u._id},process.env.JWT_SECRET||'dev_secret',{expiresIn:'7d'});
+const pub=u=>({id:u._id,name:u.name,email:u.email,phone:u.phone,role:u.role});
+r.post('/register',async(q,s)=>{const{name,email,phone,password}=q.body;
+ if(!name||!email||!password||password.length<6)return s.status(400).json({message:'Name, email and a 6+ character password are required'});
+ if(await User.findOne({email}))return s.status(400).json({message:'Email already registered'});
+ const u=await User.create({name,email,phone,password:await bcrypt.hash(password,10)});s.json({token:sign(u),user:pub(u)})});
+r.post('/login',async(q,s)=>{const u=await User.findOne({email:(q.body.email||'').toLowerCase()});
+ if(!u||!await bcrypt.compare(q.body.password||'',u.password))return s.status(400).json({message:'Wrong email or password'});
+ if(u.status!=='active')return s.status(403).json({message:'Account is deactivated'});s.json({token:sign(u),user:pub(u)})});
+r.get('/profile',auth,(q,s)=>s.json(pub(q.user)));
+module.exports=r;

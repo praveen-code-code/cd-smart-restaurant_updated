@@ -1,0 +1,12 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>My orders</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/css/style.css"></head><body>
+<header class="nav" id="nav"></header><main class="wrap"><h2>My orders</h2><div id="list"></div></main>
+<script src="/js/app.js"></script><script>
+const FLOW=['Pending','Confirmed','Preparing','Ready','Out for Delivery','Delivered'];
+if(!user())location.href='/login.html';
+const load=()=>api('/orders/my-orders').then(o=>$('#list').innerHTML=o.length?o.map(x=>{const at=FLOW.indexOf(x.orderStatus);
+ return`<div class="box"><div class="row-between"><b>Order #${x._id.slice(-6).toUpperCase()}</b><span>${new Date(x.createdAt).toLocaleDateString()} · ${money(x.totalAmount)}</span></div>
+ <p>${x.items.map(i=>i.name+' × '+i.qty).join(', ')}</p>
+ ${x.orderStatus==='Cancelled'?'<span class="st Cancelled">Cancelled</span>':`<div class="track">${FLOW.map((s,i)=>`<i class="${i<=at?'done':''}">${s}</i>`).join('')}</div>`}</div>`}).join(''):'<p class="empty">No orders yet. <a href="/"><u>Order something tasty</u></a></p>').catch(e=>toast(e.message));load();
+new EventSource('/api/events?token='+localStorage.token).onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='status'){toast('Order update: '+d.status);load()}};
+</script></body></html>

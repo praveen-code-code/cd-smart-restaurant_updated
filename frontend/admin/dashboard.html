@@ -1,0 +1,58 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet"><link rel="stylesheet" href="/css/style.css"></head><body>
+<header class="nav" id="nav"></header>
+<div class="shell"><aside class="side"><h3>Admin</h3><div class="tabs" id="tabs"></div><span class="live" id="live">Connecting</span></aside><main class="main"><div id="view"></div></main></div>
+<script src="/js/app.js"></script><script>
+if(user()?.role!=='admin')location.href='/login.html';
+const FLOW=['Pending','Confirmed','Preparing','Ready','Out for Delivery','Delivered','Cancelled'];
+const TABS={overview,marketing,products,orders,customers,offers};let cur='overview';
+$('#tabs').innerHTML=Object.keys(TABS).map(t=>`<button class="btn ${t===cur?'on':''}" data-t="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('');
+$('#tabs').onclick=e=>{const t=e.target.dataset.t;if(!t)return;cur=t;document.querySelectorAll('#tabs .btn').forEach(b=>b.classList.toggle('on',b.dataset.t===t));TABS[t]().catch(x=>toast(x.message))};
+const tbl=(h,rows)=>rows.length?`<div style="overflow:auto"><table><tr>${h.map(x=>`<th>${x}</th>`).join('')}</tr>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</table></div>`:'<p class="empty">Nothing here yet.</p>';
+async function overview(){const s=await api('/admin/stats'),d=Object.entries(s.dailySales),mx=Math.max(1,...d.map(x=>x[1]));
+ $('#view').innerHTML=`<div class="stats">${[['Today\'s orders',s.todayOrders],['Today\'s sales',money(s.todaySales)],['Customers',s.customers],['Products',s.products]].map(x=>`<div class="box stat"><b>${x[1]}</b>${x[0]}</div>`).join('')}</div>
+ <div class="box"><h3>Live activity</h3><div id="feed">${feed.join('')||'<p class="empty">Waiting for new orders.</p>'}</div></div>
+ <div class="box"><h3>Marketing suggestions</h3><br>${s.suggestions.map(t=>`<div class="tip">${t}</div>`).join('')}</div>
+ <div class="box"><h3>Sales, last 7 days</h3><br>${d.length?`<div class="bars">${d.map(([k,v])=>`<div style="height:${v/mx*100}%"><span>${money(v)}</span></div>`).join('')}</div><div class="bars" style="height:auto;margin-top:4px">${d.map(([k])=>`<small style="flex:1">${k.slice(5)}</small>`).join('')}</div>`:'<p class="empty">No sales yet.</p>'}</div>
+ <div class="two"><div class="box"><h3>Best sellers</h3>${tbl(['Dish','Sold'],s.bestSellers.map(b=>[b.name,b.n]))}</div><div class="box"><h3>Category performance</h3>${tbl(['Category','Sold'],s.categories.map(b=>[b.name,b.n]))}</div></div>
+ <div class="box"><h3>Least ordered</h3>${tbl(['Dish','Sold'],s.leastOrdered.map(b=>[b.name,b.n]))}<p>Peak ordering hour: ${s.peakHour??'not enough data'}${s.peakHour!=null?':00':''}</p></div>`}
+async function products(){const p=await api('/products?all=1');
+ $('#view').innerHTML=`<form class="box" id="pf"><h3>Add product</h3><br><div class="two"><input name="name" placeholder="Product name" required><select name="category">${CATS.map(c=>`<option>${c}</option>`)}</select></div><br>
+ <input name="description" placeholder="Description"><br><br><div class="two"><input name="price" type="number" min="0" placeholder="Price (₹)" required><input name="discount" type="number" min="0" max="90" placeholder="Discount %"></div><br>
+ <div class="two"><select name="foodType"><option>Veg</option><option>Non-Veg</option></select><input name="image" type="file" accept="image/*"></div><br><button class="btn dark">Add product</button></form>
+ ${tbl(['Image','Product','Category','Price','Status','Actions'],p.map(x=>[x.image?`<img src="${x.image}" width="44" alt="">`:ICON[x.category]||'🍽️',x.name,x.category,money(x.price)+(x.discount?` (-${x.discount}%)`:''),x.isAvailable?'Active':'Disabled',
+ `<button class="btn sm ghost" onclick="tg('${x._id}',${!x.isAvailable})">${x.isAvailable?'Disable':'Enable'}</button> <button class="btn sm ghost" onclick="pr('${x._id}',${x.price})">Change price</button> <button class="btn sm red" onclick="del('${x._id}')">Delete</button>`]))}`;
+ $('#pf').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);if(!f.get('image').size)f.delete('image');try{await api('/products',{method:'POST',body:f});toast('Product added');products()}catch(x){toast(x.message)}}}
+const tg=async(id,v)=>{await api('/products/'+id,{method:'PUT',body:{isAvailable:v}});products()};
+const pr=async(id,o)=>{const v=prompt('New price (₹)',o);if(v>0){await api('/products/'+id,{method:'PUT',body:{price:+v}});products()}};
+const del=async id=>{if(confirm('Delete this product?')){await api('/products/'+id,{method:'DELETE'});products()}};
+async function orders(){const o=await api('/orders');
+ $('#view').innerHTML=tbl(['Order','Customer','Items','Total','Payment','Date','Status'],o.map(x=>['#'+x._id.slice(-6).toUpperCase(),x.userId?.name||'-',x.items.map(i=>i.name+' × '+i.qty).join(', '),money(x.totalAmount),x.paymentMethod,new Date(x.createdAt).toLocaleDateString(),
+ `<select onchange="st('${x._id}',this.value)">${FLOW.map(s=>`<option ${s===x.orderStatus?'selected':''}>${s}</option>`)}</select>`]))}
+const st=async(id,s)=>{await api(`/orders/${id}/status`,{method:'PUT',body:{status:s}});toast('Status updated')};
+async function customers(){const u=await api('/admin/users');
+ $('#view').innerHTML=tbl(['Name','Email','Phone','Registered','Status','Action'],u.map(x=>[x.name,x.email,x.phone||'-',new Date(x.createdAt).toLocaleDateString(),x.status,
+ `<button class="btn sm ghost" onclick="us('${x._id}','${x.status==='active'?'inactive':'active'}')">${x.status==='active'?'Deactivate':'Activate'}</button>`]))}
+const us=async(id,s)=>{await api('/admin/users/'+id,{method:'PUT',body:{status:s}});customers()};
+async function offers(){const o=await api('/offers');
+ $('#view').innerHTML=`<form class="box" id="of"><h3>Create offer</h3><br><div class="two"><input name="name" placeholder="Offer name" required><input name="code" placeholder="Coupon code" required></div><br>
+ <input name="description" placeholder="Description"><br><br><div class="two"><input name="discountPercent" type="number" min="1" max="90" placeholder="Discount %" required><select name="category"><option value="">All categories</option>${CATS.map(c=>`<option>${c}</option>`)}</select></div><br>
+ <div class="two"><input name="startDate" type="date" required><input name="endDate" type="date" required></div><br><button class="btn dark">Create offer</button></form>
+ ${tbl(['Offer','Code','Discount','Ends','Action'],o.map(x=>[x.name,x.code,x.discountPercent+'%',new Date(x.endDate).toLocaleDateString(),`<button class="btn sm red" onclick="dof('${x._id}')">Delete</button>`]))}`;
+ $('#of').onsubmit=async e=>{e.preventDefault();try{await api('/offers',{method:'POST',body:Object.fromEntries(new FormData(e.target))});toast('Offer created');offers()}catch(x){toast(x.message)}}}
+const dof=async id=>{await api('/offers/'+id,{method:'DELETE'});offers()};
+let PLANS=[];const feed=[];
+async function marketing(){const m=await api('/admin/marketing');PLANS=m.plans;const w=Math.max(1,...m.weeklySales.map(x=>x.v)),h=Math.max(1,...m.hours),c=Math.max(1,...Object.values(m.categoryRevenue));
+ $('#view').innerHTML=`<div class="stats">${[['Sales this week',money(m.week)],['Change vs last week',(m.growth>0?'+':'')+m.growth+'%'],['Last 30 days',money(m.monthly)],['Average order',money(m.aov)],['Repeat customers',m.repeatRate+'%']].map(x=>`<div class="box stat"><b>${x[1]}</b>${x[0]}</div>`).join('')}</div>
+ <div class="box"><h3>Campaign plans</h3><br><div class="plans">${m.plans.length?m.plans.map((p,i)=>`<div class="plan"><h4>${p.title}</h4><p>${p.why}</p><p><b>${p.action}</b></p><button class="btn sm" onclick="launch(${i})">Launch ${p.offer.code} for 7 days</button></div>`).join(''):'<p class="empty">Plans appear once orders come in.</p>'}</div></div>
+ <div class="two"><div class="box"><h3>Weekly sales</h3><br><div class="bars">${m.weeklySales.map(x=>`<div style="height:${x.v/w*100}%"><span>${money(x.v)}</span></div>`).join('')}</div><div class="bars lbl">${m.weeklySales.map(x=>`<small>${x.label}</small>`).join('')}</div></div>
+ <div class="box"><h3>Orders by hour</h3><br><div class="bars thin">${m.hours.map(n=>`<div style="height:${n/h*100}%" title="${n} orders"></div>`).join('')}</div><div class="bars lbl"><small>12 am</small><small>6 am</small><small>12 pm</small><small>6 pm</small><small>11 pm</small></div></div></div>
+ <div class="two"><div class="box"><h3>Revenue by category</h3><br>${Object.entries(m.categoryRevenue).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div class="hb"><span>${k}</span><i style="width:${v/c*100}%"></i><b>${money(v)}</b></div>`).join('')}</div>
+ <div class="box"><h3>Top customers by spend</h3>${tbl(['Customer','Orders','Spent'],m.topCustomers.map(x=>[x.name,x.orders,money(x.spent)]))}</div></div>`}
+const launch=async i=>{const o=PLANS[i].offer;try{await api('/offers',{method:'POST',body:{...o,description:PLANS[i].action,startDate:new Date(),endDate:new Date(Date.now()+7*864e5)}});toast('Offer '+o.code+' is live on the home page')}catch(x){toast(x.message)}};
+const es=new EventSource('/api/events?token='+localStorage.token);
+es.onopen=()=>{$('#live').textContent='Live';$('#live').className='live on'};es.onerror=()=>{$('#live').textContent='Reconnecting';$('#live').className='live'};
+es.onmessage=e=>{const d=JSON.parse(e.data);if(d.type==='new_order'){toast('New order: '+money(d.total)+' from '+d.customer);feed.unshift(`<div class="row-between"><span>New order from ${d.customer}</span><b>${money(d.total)}</b></div>`);feed.length=Math.min(feed.length,6)}
+ if(['overview','marketing','orders'].includes(cur))TABS[cur]().catch(()=>{})};
+overview().catch(x=>toast(x.message));
+</script></body></html>
